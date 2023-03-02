@@ -89,6 +89,7 @@ void printData(){
     StaticJsonDocument<STM_JSON_DOCUMENT_MEDIUM_SIZE> pressureJson;
 	
     pressureJson["pressure"] = pressure;
+    pressureJson["min_pressure"] = min_press_actual;
     decay_rate > 0 ? pressureJson["decay_rate"] = decay_rate : pressureJson["decay_rate"] = 0;
     pressureJson["cumulative_loss"] = cumulative_loss * 100 / (-min_press_actual+0.01);
     pressureJson["cumulative_loss_raw"] = cumulative_loss;
