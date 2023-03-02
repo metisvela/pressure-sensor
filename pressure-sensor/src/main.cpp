@@ -24,7 +24,7 @@
 int pressureRead();
 float readSecs();
 void printData();
-float init_time = 0;
+float init_time = 0; // holds the time when minimum pressure is reached
 float prev_time = 0;
 float curr_time = 0;
 int DAC_INPUT = 0;
@@ -55,20 +55,30 @@ class ModuleCallbacks: public SailtrackModuleCallbacks {
 void setup() {
     pressSens.begin("pressure", IPAddress(192, 168, 42, 106), new ModuleCallbacks());
     prev_time = readSecs();
-    init_time = prev_time;
+    //init_time = prev_time;
     init_pressure = pressureRead();
     prev_pressure = init_pressure;
 }
 
 void loop() {
-    pressure = pressureRead();
-    if (pressure < min_press_actual) min_press_actual = pressure;
+
     curr_time = readSecs();
+    pressure = pressureRead();
+
+    if (pressure < min_press_actual){
+        min_press_actual = pressure;
+        init_time = curr_time;
+    }
+        
     int loss = pressure-prev_pressure;
     float deltaTime = curr_time-prev_time;
-    decay_rate = loss/(deltaTime);
-    loss > 0 ? cumulative_loss += loss : (cumulative_loss = 0, min_press_actual = 0);  // debug
+    
+    decay_rate = loss/(deltaTime);  // Pas/s
+    
+    loss > 0 ? cumulative_loss += loss : (cumulative_loss = 0, min_press_actual = 0, init_time = 0);  // debug
+    
     cumulative_speed = cumulative_loss/(curr_time-init_time);
+    
     prev_pressure = pressure;
     prev_time = curr_time;
     printData();
