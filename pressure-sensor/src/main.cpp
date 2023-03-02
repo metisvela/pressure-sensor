@@ -57,10 +57,7 @@ void setup() {
     prev_time = readSecs();
     init_time = prev_time;
     init_pressure = pressureRead();
-    prev_pressure = init_pressure;ù
-    
-    // at the moment non funziona un cazz.
-
+    prev_pressure = init_pressure;
 }
 
 void loop() {
@@ -79,29 +76,15 @@ void loop() {
 }
 
 void printData(){
-    StaticJsonDocument<STM_JSON_DOCUMENT_MEDIUM_SIZE> doc;
-	JsonObject pressureJson = doc.createNestedObject("pressure");
+    StaticJsonDocument<STM_JSON_DOCUMENT_MEDIUM_SIZE> pressureJson;
 	pressureJson["pressure"] = pressure;
     decay_rate > 0 ? pressureJson["decay_rate"] = decay_rate : pressureJson["decay_rate"] = 0;
-    pressureJson["cumulative_loss"] = cumulative_loss * 100 / (-min_press_actual);
+    pressureJson["cumulative_loss"] = cumulative_loss * 100 / (-min_press_actual+0.01);
     pressureJson["cumulative_speed"] = cumulative_speed;
-
-	pressSens.publish("sensor/pressSens0", doc.as<JsonObjectConst>());
+	pressSens.publish("sensor/pressure0", pressureJson.as<JsonObjectConst>());
 }
 
-/*int pressureRead(){
-    float avg = 0;
-		for (int i = 0; i < ADC_NUM_READINGS; i++) {
-            DAC_INPUT = analogRead(IN_PIN);
-            sensorVoltage=map(DAC_INPUT, 0, ADC_VALUES, MIN_VOLTAGE_MILLIS, MAX_VOLTAGE_MILLIS); //[ADC to mV]
-            pressure=map(sensorVoltage, MIN_VOLTAGE_MILLIS, MAX_VOLTAGE_MILLIS, minPressure, maxPressure); // [mV to Pa]
-            avg += pressure / ADC_NUM_READINGS;
-			delay(ADC_READING_DELAY_MS);
-		}
-   return avg;
-}*/
-
-int pressureRead(){   // debug
+int pressureRead(){
     float avg = 0;
 		for (int i = 0; i < ADC_NUM_READINGS; i++) {
             DAC_INPUT = analogRead(IN_PIN);
