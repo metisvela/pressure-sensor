@@ -1,6 +1,4 @@
 #include <Arduino.h>
-#include <SailtrackModule.h>
-#include <freertos/queue.h>
 
 // -------------------------- Configuration -------------------------- //
 
@@ -40,25 +38,8 @@ int min_press_actual = 0; // minima pressione realmente raggiunta
 int loss = 0;
 float avg = 0;
 
-// uncomment to print the ADC values
-//int adc_reads[ADC_NUM_READINGS];
-
-SailtrackModule pressSens;
-
-class ModuleCallbacks: public SailtrackModuleCallbacks {
-	void onStatusPublish(JsonObject status) {
-		JsonObject battery = status.createNestedObject("battery");
-		float avg = 0;
-		for (int i = 0; i < BATTERY_NUM_READINGS; i++) {
-			avg += analogRead(BATTERY_ADC_PIN) / BATTERY_NUM_READINGS;
-			delay(BATTERY_READING_DELAY_MS);
-		}
-		battery["voltage"] = 2 * avg / BATTERY_ADC_RESOLUTION * BATTERY_ESP32_REF_VOLTAGE * BATTERY_ADC_REF_VOLTAGE;
-	}
-};
 
 void setup() {
-    pressSens.begin("pressure", IPAddress(192, 168, 42, 106), new ModuleCallbacks());
     prev_time = readSecs();
     init_pressure = pressureRead();
     prev_pressure = init_pressure;
@@ -72,11 +53,22 @@ void loop() {
         min_press_actual = pressure;
         init_time = curr_time;
     } 
-    loss = pressure-prev_pressure;
-    (loss < 0 && abs(loss) < PRECISION) ? loss = 0 : loss;
+    
+    loss = pressure-prev_pressure; 
+
+    if(loss < 0 && abs(loss) < PRECISION){
+        loss = 0;
+    }
+
     decay_rate = loss/(deltaTime);  
 
-    loss >= 0 ? cumulative_loss += loss : (cumulative_loss = 0, min_press_actual = 0, init_time = readSecs());  
+    if(loss >= 0){
+        cumulative_loss += loss;
+    }else{
+        cumulative_loss = 0;
+        min_press_actual = 0;
+        init_time = readSecs();
+    }
 
     cumulative_speed = cumulative_loss/(curr_time-init_time);
     
@@ -87,25 +79,7 @@ void loop() {
 }
 
 void printData(){
-    StaticJsonDocument<STM_JSON_DOCUMENT_MEDIUM_SIZE> pressureJson;
-	
-    pressureJson["pressure"] = pressure;
-    pressureJson["min_pressure"] = min_press_actual;
-    decay_rate > 0 ? pressureJson["decay_rate"] = decay_rate : pressureJson["decay_rate"] = 0;
-    pressureJson["cumulative_loss"] = cumulative_loss * 100 / (-min_press_actual+0.01);
-    pressureJson["cumulative_loss_raw"] = cumulative_loss;
-    pressureJson["cumulative_speed"] = cumulative_speed;
-
-    /*  uncomment to print adc values
-    std::string adc = "";
-    for (int i = 0; i < ADC_NUM_READINGS; i++){
-        adc += std::to_string(adc_reads[i]) + " ";
-    }
-    pressureJson["adc_reads"] = adc;
-    pressureJson["loss"] = loss;
-	*/
-
-    pressSens.publish("sensor/pressure0", pressureJson.as<JsonObjectConst>());
+    
 }
 
 int pressureRead(){
