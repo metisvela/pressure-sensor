@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <LiquidCrystal_I2C.h>
 
 // -------------------------- Configuration -------------------------- //
 
@@ -21,10 +22,13 @@
 #define MAX_PRESSURE         0.0   // The maximum pressure value that the sensor can read
 #define MIN_PRESSURE         -98070    // The minimum pressure value that the sensor can read
 #define PRECISION            80
+#define LCD_ADDRESS          0x27
+#define LCD_COLUMS           16
+#define LCD_ROWS             2
 
 int pressureRead();
 float readSecs();
-void printData();
+void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate);
 float init_time = 0; // holds the time when minimum pressure is reached
 float prev_time = 0;
 float curr_time = 0;
@@ -40,6 +44,8 @@ int min_press_actual = 0; // minima pressione realmente raggiunta
 int loss = 0;
 float avg = 0;
 
+LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMS, LCD_ROWS);
+
 // Debug: uncomment to print the ADC values
 //int adc_reads[ADC_NUM_READINGS];
 
@@ -47,6 +53,10 @@ void setup() {
     prev_time = readSecs();
     init_pressure = pressureRead();
     prev_pressure = init_pressure;
+
+    // Initialize the lcd
+    lcd.init();
+    lcd.backlight();
 }
 
 void loop() {
@@ -78,13 +88,20 @@ void loop() {
     
     prev_pressure = pressure;
     prev_time = curr_time;
-    printData();
+    printData(lcd, pressure, decay_rate);
     delay(1000);
 }
 
-void printData() {
+void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate) {
     // LCD_I2C library: https://registry.platformio.org/libraries/marcoschwartz/LiquidCrystal_I2C
     // Print decay_rate and pressure values on the LCD
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Pressure ");
+    lcd.print(String(pressure));
+    lcd.setCursor(0, 1);
+    lcd.print("Decay r. ");
+    lcd.print(String(decay_rate));
 }
 
 int pressureRead() {
