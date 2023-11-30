@@ -1,58 +1,61 @@
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
+#include <vector>
 
 // -------------------------- Configuration -------------------------- //
 
-// #define BATTERY_ADC_PIN             35
-// #define BATTERY_ADC_RESOLUTION      4095
-// #define BATTERY_ADC_REF_VOLTAGE     1.1
-// #define BATTERY_ESP32_REF_VOLTAGE   3.3
-// #define BATTERY_NUM_READINGS        32
 #define ADC_NUM_READINGS            20
-// #define BATTERY_READING_DELAY_MS    20
 #define ADC_READING_DELAY_MS        20
 
-#define IN_PIN               34    // Change this to the pin you're using for the analog sensor
-#define MAX_V                5.0   // The reference voltage used by the ADC
-// The ADC has a 12-bits resolution: return values are in the range 0-4095
-#define ADC_MIN_VALUE        0     // Min value returned by the ADC
-#define ADC_MAX_VALUE        4095  // Max value returned by the ADC
-#define MAX_VOLTAGE_MILLIS   4500  //??? non dovrebbe essere 4,5V e non 3,3V
-#define MIN_VOLTAGE_MILLIS   500   // Minimum voltage
-#define MAX_PRESSURE         0.0   // The maximum pressure value that the sensor can read
-#define MIN_PRESSURE         -98070    // The minimum pressure value that the sensor can read
-#define PRECISION            80
-#define LCD_ADDRESS          0x27
-#define LCD_COLUMS           16
-#define LCD_ROWS             2
+#define IN_PIN              27    // Change this to the pin you're using for the ADC
+#define V_REF               3300  // Reference voltage [in mV] of the ADC
+#define N_BIT               12    // Resolution of the ADC: 12-bit on ESP32-based boards
+// #define ADC_MIN_VOLTAGE     0     // Min voltage [in mV] read by the ADC
+// #define ADC_MAX_VOLTAGE     3300  // Max voltage [in mV] read by the ADC
+#define SENS_ATM_VOLTAGE    4460  // Voltage [in mV] returned by the pressure sensor, at atmospheric pressure
+#define SENS_MIN_VOLTAGE    500   // Min voltage [in mV] returned by the sensor
+#define SENS_MAX_VOLTAGE    5000  // Max voltage [in mV] returned by the sensor
+#define ATM_PRESSURE        0       // Pressure value [in Pa] read by the sensor at atmospheric pressure
+#define MIN_PRESSURE        -98070  // Minimum pressure value [in Pa] read by the sensor
+#define PRECISION           80
+#define MOV_AVE_CAPACITY    5     // Number of samples used in the moving avarage
+#define LCD_ADDRESS         0x27
+#define LCD_COLUMS          16
+#define LCD_ROWS            2
 
-int pressureRead();
-float readSecs();
+const int adc_min_value = 0;
+const int adc_max_value = pow(2, N_BIT) - 1;
+const int adc_min_voltage = 0;      // [mV]
+const int adc_max_voltage = V_REF;  // [mV]
+
+int readPressure();
+float readTime();
+void addToMean(float val);
+float getMean();
 void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate);
-float init_time = 0; // holds the time when minimum pressure is reached
+
+float init_time = 0; // time when minimum pressure is reached
 float prev_time = 0;
 float curr_time = 0;
 int ADC_input = 0;
-int sensorVoltage = 0;
-int init_pressure = 0;
+int in_pin_voltage = 0;
+// int init_pressure = 0;
 int prev_pressure = 0;
 int pressure = 0;
+int min_actual_pressure = 0; // minimum pressure that is actually reached
+int loss = 0;
 int cumulative_loss = 0;
 float cumulative_speed = 0;
 float decay_rate = 0;
-int min_press_actual = 0; // minima pressione realmente raggiunta
-int loss = 0;
 float avg = 0;
+std::vector<float> moving_average;
 
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMS, LCD_ROWS);
 
-// Debug: uncomment to print the ADC values
-//int adc_reads[ADC_NUM_READINGS];
 
 void setup() {
-    prev_time = readSecs();
-    init_pressure = pressureRead();
-    prev_pressure = init_pressure;
+    prev_time = readTime();
+    prev_pressure = readPressure();
 
     // Initialize the lcd
     lcd.init();
@@ -60,31 +63,36 @@ void setup() {
 }
 
 void loop() {
-    curr_time = readSecs();
-    float deltaTime = curr_time-prev_time;
-    pressure = pressureRead();
-    if (pressure < min_press_actual) {
-        min_press_actual = pressure;
+    curr_time = readTime();
+    float delta_time = curr_time - prev_time;
+    pressure = readPressure();
+    if (pressure < min_actual_pressure)
+    {
+        min_actual_pressure = pressure;
         init_time = curr_time;
-    } 
-    
-    loss = pressure-prev_pressure; 
+    }
 
-    if (loss < 0 && abs(loss) < PRECISION) {
+    loss = pressure - prev_pressure;
+
+    if (loss < 0 && abs(loss) < PRECISION)
+    {
         loss = 0;
     }
 
-    decay_rate = loss/(deltaTime);  
-
-    if (loss >= 0) {
+    decay_rate = loss / delta_time; 
+    addToMean(decay_rate);
+    if (loss >= 0)
+    {
         cumulative_loss += loss;
-    } else {
+    }
+    else
+    {
         cumulative_loss = 0;
-        min_press_actual = 0;
-        init_time = readSecs();
+        min_actual_pressure = 0;
+        init_time = readTime();
     }
 
-    cumulative_speed = cumulative_loss / (curr_time-init_time);
+    cumulative_speed = cumulative_loss / (curr_time - init_time);
     
     prev_pressure = pressure;
     prev_time = curr_time;
@@ -92,7 +100,8 @@ void loop() {
     delay(1000);
 }
 
-void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate) {
+void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate)
+{
     // LCD_I2C library: https://registry.platformio.org/libraries/marcoschwartz/LiquidCrystal_I2C
     // Print decay_rate and pressure values on the LCD
     lcd.clear();
@@ -101,23 +110,49 @@ void printData(LiquidCrystal_I2C& lcd, int pressure, float decay_rate) {
     lcd.print(String(pressure));
     lcd.setCursor(0, 1);
     lcd.print("Decay r. ");
-    lcd.print(String(decay_rate));
+    lcd.print(String(getMean()));
 }
 
-int pressureRead() {
+int readPressure()
+{
     avg = 0;
-		for (int i = 0; i < ADC_NUM_READINGS; i++) {
-            ADC_input = analogRead(IN_PIN);
-            //adc_reads[i] = ADC_input;  
-            avg += ADC_input / ADC_NUM_READINGS;
-			delay(ADC_READING_DELAY_MS);
-		}
-        sensorVoltage = map(avg, ADC_MIN_VALUE, ADC_MAX_VALUE, MIN_VOLTAGE_MILLIS, MAX_VOLTAGE_MILLIS); //[ADC to mV]
-        pressure = map(sensorVoltage, MIN_VOLTAGE_MILLIS, MAX_VOLTAGE_MILLIS, MIN_PRESSURE, MAX_PRESSURE); // [mV to Pa]
+	for (int i = 0; i < ADC_NUM_READINGS; i++)
+    {
+        ADC_input = analogRead(IN_PIN); 
+        avg += ADC_input;
+		delay(ADC_READING_DELAY_MS);
+	}
+    avg = avg / ADC_NUM_READINGS;
+    in_pin_voltage = map(avg, adc_min_value, adc_max_value, adc_min_voltage, adc_max_voltage); //[ADC to mV]
+    pressure = map(in_pin_voltage, SENS_MIN_VOLTAGE, SENS_ATM_VOLTAGE, MIN_PRESSURE, ATM_PRESSURE); // [mV to Pa]
     return pressure;
 }
 
-float readSecs() {
+float readTime()
+{
     float time = millis();
     return time/1000;
+}
+
+void addToMean(float val)
+{
+    if (moving_average.size() < MOV_AVE_CAPACITY)
+    {
+        moving_average.push_back(val);
+    }
+    else
+    {
+        moving_average.erase(moving_average.begin());
+        moving_average.push_back(val);
+    }
+}
+
+float getMean()
+{
+    float sum = 0;
+    for(float val : moving_average)
+    {
+        sum += val;
+    }
+    return sum / moving_average.size();
 }
