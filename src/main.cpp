@@ -7,13 +7,12 @@
 
 // -------------------------- Configuration -------------------------- //
 
-#define ADC_NUM_READINGS                50
-#define ADC_READING_DELAY_MS            20
+#define ADC_NUM_READINGS                200
+#define ADC_READING_DELAY_MS            5
 #define ADC_MIN                         490  // 1bar ADC reading
 #define ADC_MAX                         4095
 
-// We are showing dacay rate since DECAY_RATE_TIME before now
-// If there is not enough data show the dacete rate since starting
+// We are showing dacay rate in DECAY_RATE_TIME ms future
 #define DECAY_RATE_TIME                 3600000
 
 #define SENSOR_PIN                      34
@@ -72,21 +71,22 @@ float readPressure() {
 	for (int i = 0; i < ADC_NUM_READINGS; i++) {
         avg += analogRead(SENSOR_PIN);
 		delay(ADC_READING_DELAY_MS);
-	}
+    }
     avg = avg/ADC_NUM_READINGS;
 
     return map(avg, ADC_MIN, ADC_MAX, MIN_PRESSURE, ATM_PRESSURE);
 }
 
 float decay_rate(float pressure, float current_time) {
-    static std::deque<std::pair<float, float>> delta; // Save data as <pressure, time>
-    delta.push_back(std::make_pair(pressure, current_time));
+    static float past_time = current_time;
+    static float past_pressure = pressure;
 
-    if (current_time - delta.front().second > DECAY_RATE_TIME) {
-        delta.pop_front();
-    }
+    float decay = (pressure - past_pressure)*DECAY_RATE_TIME / (1000*(current_time - past_time)); 
     
-    return (pressure - delta.front().first)*DECAY_RATE_TIME / (1000*(current_time - delta.front().second));    
+    past_time = current_time;
+    past_pressure = pressure;
+
+    return decay;
 }
 
 float total_decay(float pressure, float current_time){
@@ -100,5 +100,4 @@ float total_decay(float pressure, float current_time){
     }else{
         return min_pressure - pressure;
     }
-
 }
